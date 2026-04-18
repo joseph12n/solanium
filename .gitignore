@@ -1,0 +1,20 @@
+node_modules
+.env
+.env.local
+.next
+dist
+coverage
+*.log
+.DS_Store
+
+# IA / agentes (solo configuracion local)
+.agents/
+.claude/
+.anthropic/
+.copilot/
+.cursor/
+
+# Archivos de IA locales
+.claudecode.md
+CLAUDE.md
+.cursorrules

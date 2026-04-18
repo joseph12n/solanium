@@ -1,0 +1,21 @@
+{
+  "name": "solanium",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistema de Facturación Universal — monorepo (backend Express + frontend Next.js + shared Zod)",
+  "workspaces": [
+    "backend",
+    "frontend",
+    "shared"
+  ],
+  "scripts": {
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "migrate": "npm run migrate --workspace @solanium/backend",
+    "dev:backend": "npm run dev --workspace @solanium/backend",
+    "dev:frontend": "npm run dev --workspace @solanium/frontend",
+    "build:frontend": "npm run build --workspace @solanium/frontend"
+  },
+  "author": "",
+  "license": "ISC"
+}

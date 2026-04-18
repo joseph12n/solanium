@@ -1,0 +1,10 @@
+{
+  "name": "@solanium/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "schemas/index.js",
+  "type": "commonjs",
+  "dependencies": {
+    "zod": "^3.23.8"
+  }
+}
