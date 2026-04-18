@@ -9,10 +9,17 @@ coverage
 
 # IA / agentes (solo configuracion local)
 .agents/
+.augment/
 .claude/
 .anthropic/
 .copilot/
 .cursor/
+
+# MCP y configuraciones de asistente
+.mcp.json
+.mcp.*
+.github/copilot-instructions.md
+skills-lock.json
 
 # Archivos de IA locales
 .claudecode.md
