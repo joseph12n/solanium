@@ -2,75 +2,84 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useState } from 'react';
+import { Plus, Package } from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
 import { ProductForm } from '@/components/ProductForm';
-import { TenantSwitcher } from '@/components/ui/TenantSwitcher';
 import { api, type Product } from '@/lib/api';
-import { useTenant } from '@/lib/tenant-context';
+import { useSession } from '@/lib/session-context';
+import SplitText from '@/components/reactbits/SplitText';
+import BlurText from '@/components/reactbits/BlurText';
+import { ShineButton } from '@/components/ui/ShineButton';
 
-const EASE = [0.22, 1, 0.36, 1] as const;
+const EASE = [0.23, 1, 0.32, 1] as const;
 
 export default function InventarioPage() {
-  const { active, loading: tenantLoading } = useTenant();
+  const { tenant, loading: tenantLoading } = useSession();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (!active) return;
+    if (!tenant) return;
     setLoading(true);
     try {
-      const { data } = await api.listProducts(active.slug);
+      const { data } = await api.listProducts();
       setProducts(data);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }, [active]);
+  }, [tenant]);
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  useEffect(() => { refresh(); }, [refresh]);
 
-  if (tenantLoading) {
-    return <PageSkeleton />;
-  }
+  if (tenantLoading) return <PageSkeleton />;
 
   return (
-    <main className="min-h-screen px-6 md:px-10 py-10 max-w-6xl mx-auto">
-      <header className="flex flex-col gap-6 mb-10">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <div className="text-xs uppercase tracking-[0.2em] text-ink-500">Solanium · Inventario</div>
-            <h1 className="text-4xl font-semibold tracking-tight mt-2">
-              {active?.nombre ?? 'Sin tenant'}
-            </h1>
-          </div>
-          <motion.button
-            whileHover={{ y: -1 }}
-            whileTap={{ scale: 0.97 }}
-            onClick={() => setShowForm((s) => !s)}
-            className="px-4 py-2 rounded-full text-sm font-medium hairline hairline-hover bg-white/5"
-          >
-            {showForm ? 'Cerrar' : '+ Nuevo producto'}
-          </motion.button>
+    <div className="px-6 py-8 max-w-6xl mx-auto">
+      {/* ── Header ── */}
+      <motion.header
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: EASE }}
+        className="flex items-end justify-between mb-8"
+      >
+        <div>
+          <span className="text-[11px] uppercase tracking-[0.2em] text-ink-500 font-medium">
+            Inventario
+          </span>
+          <SplitText
+            text={tenant?.branding?.empresa || tenant?.nombre || 'Sin tenant'}
+            tag="h1"
+            className="text-3xl font-bold tracking-tight mt-1"
+            delay={0.03}
+          />
+          <p className="text-sm text-ink-500 mt-2">
+            {products.length} productos registrados
+          </p>
         </div>
-        <TenantSwitcher />
-      </header>
+        <ShineButton
+          onClick={() => setShowForm((s) => !s)}
+          variant={showForm ? 'ghost' : 'primary'}
+          icon={<Plus size={14} />}
+        >
+          {showForm ? 'Cerrar formulario' : 'Nuevo producto'}
+        </ShineButton>
+      </motion.header>
 
+      {/* ── Product Form (collapsible) ── */}
       <AnimatePresence>
-        {showForm && active && (
+        {showForm && tenant && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.4, ease: EASE }}
-            className="mb-10 overflow-hidden"
+            className="mb-8 overflow-hidden"
           >
             <ProductForm
-              tenantSlug={active.slug}
-              tipoNegocio={active.tipo_negocio}
+              tipoNegocio={tenant.tipo_negocio}
               onCreated={() => {
                 setShowForm(false);
                 refresh();
@@ -80,6 +89,7 @@ export default function InventarioPage() {
         )}
       </AnimatePresence>
 
+      {/* ── Product Grid ── */}
       <section>
         <AnimatePresence mode="popLayout">
           {loading ? (
@@ -90,21 +100,28 @@ export default function InventarioPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="glass hairline rounded-2xl p-10 text-center text-ink-500"
+              className="text-center py-20"
             >
-              Aún no hay productos para <span className="text-ink-300">{active?.nombre}</span>.
-              Crea el primero para ver los campos adaptados al rubro.
+              <div className="w-16 h-16 rounded-2xl bg-white/[0.03] flex items-center justify-center mx-auto mb-4">
+                <Package size={28} className="text-ink-600 opacity-40" />
+              </div>
+              <p className="text-ink-400 font-medium">
+                Aún no hay productos para <span className="text-ink-200">{tenant?.branding?.empresa || tenant?.nombre}</span>
+              </p>
+              <p className="text-xs text-ink-600 mt-1">
+                Crea el primero para ver los campos adaptados al rubro
+              </p>
             </motion.div>
           ) : (
             <motion.div
-              key={active?.slug}
+              key={tenant?.slug}
               className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
             >
               {products.map((p, i) => (
                 <ProductCard
                   key={p.id}
                   product={p}
-                  tipoNegocio={active!.tipo_negocio}
+                  tipoNegocio={tenant!.tipo_negocio}
                   index={i}
                 />
               ))}
@@ -112,19 +129,15 @@ export default function InventarioPage() {
           )}
         </AnimatePresence>
       </section>
-    </main>
+    </div>
   );
 }
 
 function SkeletonGrid() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {[0, 1, 2, 3, 4, 5].map((i) => (
-        <div
-          key={i}
-          className="shimmer-bg animate-shimmer hairline rounded-2xl h-36"
-          style={{ opacity: 1 - i * 0.08 }}
-        />
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="shimmer-bg animate-shimmer rounded-2xl h-36" style={{ opacity: 1 - i * 0.1 }} />
       ))}
     </div>
   );
@@ -132,10 +145,10 @@ function SkeletonGrid() {
 
 function PageSkeleton() {
   return (
-    <main className="min-h-screen px-6 py-10 max-w-6xl mx-auto">
-      <div className="shimmer-bg animate-shimmer h-8 w-60 rounded mb-6" />
-      <div className="shimmer-bg animate-shimmer h-10 w-full rounded mb-10" />
+    <div className="px-6 py-8 max-w-6xl mx-auto">
+      <div className="shimmer-bg animate-shimmer h-8 w-60 rounded-lg mb-6" />
+      <div className="shimmer-bg animate-shimmer h-10 w-full rounded-lg mb-10" />
       <SkeletonGrid />
-    </main>
+    </div>
   );
 }

@@ -3,8 +3,9 @@
 import { motion } from 'framer-motion';
 import type { Product, TipoNegocio } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
+import DecryptedText from '@/components/reactbits/DecryptedText';
 
-const EASE = [0.22, 1, 0.36, 1] as const;
+const EASE = [0.23, 1, 0.32, 1] as const;
 
 function renderMetadataHighlights(tipo: TipoNegocio, meta: Record<string, any>) {
   switch (tipo) {
@@ -39,38 +40,44 @@ export function ProductCard({
       layout
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
+      exit={{ opacity: 0, scale: 0.97 }}
       transition={{ duration: 0.4, delay: index * 0.04, ease: EASE }}
       whileHover={{ y: -2 }}
-      className="glass hairline hairline-hover rounded-2xl p-5 flex flex-col gap-3"
+      className="rounded-2xl p-[1px] bg-gradient-to-br from-white/[0.06] via-white/[0.02] to-white/[0.04]"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-xs text-ink-500 font-mono uppercase tracking-wider">{product.sku}</div>
-          <h3 className="text-lg font-medium tracking-tight mt-0.5">{product.nombre}</h3>
-        </div>
-        <div className="text-right">
-          <div className="text-xl font-semibold tracking-tight">
-            {formatCurrency(Number(product.precio))}
+      <div className="rounded-[calc(1rem-1px)] bg-surface-card p-5 flex flex-col gap-3"
+        style={{ boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.04), 0 4px 20px -4px rgba(0,0,0,0.3)' }}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] text-ink-600 font-mono uppercase tracking-wider">
+              <DecryptedText text={product.sku} animateOn="view" speed={35} maxIterations={5} className="text-ink-400" encryptedClassName="text-accent-light/50" />
+            </div>
+            <h3 className="text-base font-medium tracking-tight mt-0.5">{product.nombre}</h3>
           </div>
-          <div className="text-xs text-ink-500 mt-0.5">
-            Stock: {Number(product.stock)} {product.unidad}
+          <div className="text-right">
+            <div className="text-lg font-semibold tracking-tight">
+              {formatCurrency(Number(product.precio))}
+            </div>
+            <div className="text-[10px] text-ink-600 mt-0.5">
+              Stock: {Number(product.stock)} {product.unidad}
+            </div>
           </div>
         </div>
-      </div>
 
-      {highlights.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 pt-2 border-t border-white/5">
-          {highlights.map((h, i) => (
-            <span
-              key={i}
-              className="text-[11px] px-2 py-0.5 rounded-full bg-white/5 text-ink-300"
-            >
-              {h}
-            </span>
-          ))}
-        </div>
-      )}
+        {highlights.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-2.5 border-t border-white/[0.04]">
+            {highlights.map((h, i) => (
+              <span
+                key={i}
+                className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.04] text-ink-400 font-medium"
+              >
+                {h}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     </motion.article>
   );
 }

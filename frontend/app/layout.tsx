@@ -1,20 +1,34 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Outfit, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
-import { TenantProvider } from '@/lib/tenant-context';
+import { SessionProvider } from '@/lib/session-context';
+import { LayoutShell } from '@/components/LayoutShell';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+const outfit = Outfit({
+  subsets: ['latin'],
+  variable: '--font-sans',
+  display: 'swap',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Solanium — Facturación Universal',
-  description: 'Sistema de facturación multi-rubro basado en metadatos dinámicos.',
+  description:
+    'Sistema SaaS de facturación multi-rubro con onboarding por token, branding personalizado y plantillas vibrantes.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" className={inter.variable}>
+    <html lang="es" className={`${outfit.variable} ${jetbrainsMono.variable}`}>
       <body className="min-h-screen">
-        <TenantProvider>{children}</TenantProvider>
+        <SessionProvider>
+          <LayoutShell>{children}</LayoutShell>
+        </SessionProvider>
       </body>
     </html>
   );

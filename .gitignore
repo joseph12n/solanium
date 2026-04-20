@@ -25,3 +25,6 @@ skills-lock.json
 .claudecode.md
 CLAUDE.md
 .cursorrules
+
+# Credenciales y tokens locales — NUNCA commitear
+TOKENS_Y_USUARIOS.md

@@ -8,7 +8,6 @@ import { api, type TipoNegocio } from '@/lib/api';
 const EASE = [0.22, 1, 0.36, 1] as const;
 
 interface Props {
-  tenantSlug: string;
   tipoNegocio: TipoNegocio;
   onCreated: () => void;
 }
@@ -71,7 +70,7 @@ function FieldInput({
   );
 }
 
-export function ProductForm({ tenantSlug, tipoNegocio, onCreated }: Props) {
+export function ProductForm({ tipoNegocio, onCreated }: Props) {
   const extraFields = useMemo(() => METADATA_FIELDS[tipoNegocio] || [], [tipoNegocio]);
 
   const [sku, setSku] = useState('');
@@ -91,7 +90,7 @@ export function ProductForm({ tenantSlug, tipoNegocio, onCreated }: Props) {
       const cleanMeta = Object.fromEntries(
         Object.entries(metadata).filter(([, v]) => v !== undefined && v !== '')
       );
-      await api.createProduct(tenantSlug, {
+      await api.createProduct({
         sku,
         nombre,
         precio: Number(precio),

@@ -1,10 +1,10 @@
 const { Router } = require('express');
 const ctrl = require('../controllers/product.controller');
-const { tenantMiddleware } = require('../middleware/tenant.middleware');
+const { authMiddleware } = require('../middleware/auth.middleware');
 
 const router = Router();
 
-router.use(tenantMiddleware);
+router.use(authMiddleware);
 
 router.get('/', ctrl.list);
 router.get('/:id', ctrl.getById);
