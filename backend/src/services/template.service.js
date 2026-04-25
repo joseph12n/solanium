@@ -59,18 +59,27 @@ async function remove(tenant, id) {
 /**
  * Aplica un preset (definido en shared) como plantilla real para el tenant.
  * Si ya existe una plantilla con ese slug, se actualiza; de lo contrario
- * se crea. Útil para el onboarding visual del sistema.
+ * se crea.
+ *
+ * SIEMPRE se marca como `is_default: true` para que el skin del app cambie
+ * inmediatamente. El repo desmarca automáticamente el anterior default en
+ * la misma transacción, respetando el índice único parcial.
  */
 async function applyPreset(tenant, presetSlug) {
   const preset = PRESET_TEMPLATES.find((p) => p.slug === presetSlug);
   if (!preset) {
     throw new TemplateServiceError('Preset no existe', { status: 404, code: 'preset_not_found' });
   }
+  // Clonar el preset y filtrar campos que no pertenecen al schema de
+  // invoice_templates (tipo_negocio/style viven sólo en la tabla de presets).
+  const { tipo_negocio: _tn, style: _st, ...cleanPreset } = preset;
+  const payload = { ...cleanPreset, is_default: true };
+
   const existing = (await templateRepo.listByTenant(tenant.id)).find((t) => t.slug === preset.slug);
   if (existing) {
-    return templateRepo.update(tenant.id, existing.id, preset);
+    return templateRepo.update(tenant.id, existing.id, payload);
   }
-  return templateRepo.create(tenant.id, preset);
+  return templateRepo.create(tenant.id, payload);
 }
 
 function listPresets() {

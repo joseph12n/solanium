@@ -1,29 +1,12 @@
 'use client';
 
-/**
- * Hero de login — pantalla de entrada al SaaS Solanium.
- *
- * Dos modos, seleccionables por tabs:
- *   • "Activar sistema"  → sólo token (útil la primera vez que el cliente
- *                          abre el sistema con el token de 30 días que le
- *                          entregó el super-admin al comprar el plan)
- *   • "Iniciar sesión"   → token + email + password (acceso normal)
- *
- * Al completar verifica contra el backend:
- *   1. POST /api/activation/verify → valida el token y resuelve tenant
- *   2. POST /api/users/login (opcional) → identifica al usuario
- *
- * El fondo usa componentes de ReactBits: SplitText, BlurText, GradientText,
- * ShinyText, RotatingText, DecryptedText, SpotlightCard — aprovechando el
- * mandato del proyecto (ver CLAUDE.md: ReactBits obligatorio).
- */
-
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, KeyRound, Lock, Mail, Shield, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import { useSession } from '@/lib/session-context';
+import { useLanguage } from '@/lib/language-context';
 import { ShineButton } from '@/components/ui/ShineButton';
 import GradientText from '@/components/reactbits/GradientText';
 import SplitText from '@/components/reactbits/SplitText';
@@ -32,6 +15,7 @@ import ShinyText from '@/components/reactbits/ShinyText';
 import RotatingText from '@/components/reactbits/RotatingText';
 import DecryptedText from '@/components/reactbits/DecryptedText';
 import SpotlightCard from '@/components/reactbits/SpotlightCard';
+import Particles from '@/components/reactbits/Particles';
 
 type Mode = 'activate' | 'login';
 
@@ -40,9 +24,10 @@ const EASE = [0.23, 1, 0.32, 1] as const;
 export default function LoginPage() {
   const router = useRouter();
   const { login, token, loading } = useSession();
+  const { t } = useLanguage();
 
   const [mode, setMode] = useState<Mode>('activate');
-  const [activationToken, setActivationToken] = useState('');
+  const [code, setCode] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -53,13 +38,10 @@ export default function LoginPage() {
   }, [loading, token, router]);
 
   const canSubmit = useMemo(() => {
-    if (mode === 'activate') return activationToken.trim().length >= 16;
-    return (
-      activationToken.trim().length >= 16 &&
-      email.includes('@') &&
-      password.length >= 8
-    );
-  }, [mode, activationToken, email, password]);
+    const codeOk = /^\d{6}$/.test(code);
+    if (mode === 'activate') return codeOk;
+    return codeOk && email.includes('@') && password.length >= 8;
+  }, [mode, code, email, password]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -68,14 +50,13 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       const { tenant } = await login({
-        token: activationToken.trim(),
+        code: code.trim(),
         email: mode === 'login' ? email.trim() : undefined,
         password: mode === 'login' ? password : undefined,
       });
-      // Una vez dentro, el layout adaptará el dashboard a tenant.tipo_negocio
       router.replace(`/?welcome=${encodeURIComponent(tenant.nombre)}`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'No pudimos validar tus credenciales';
+      const msg = err instanceof Error ? err.message : t('login.invalidCredentials');
       setError(msg);
     } finally {
       setSubmitting(false);
@@ -83,24 +64,38 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-surface-base text-ink-100">
-      {/* ─── Background gradient + grid ─── */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute -top-1/3 -left-1/3 w-[800px] h-[800px] rounded-full bg-accent-500/20 blur-[120px]" />
-        <div className="absolute -bottom-1/3 -right-1/3 w-[700px] h-[700px] rounded-full bg-primary/20 blur-[120px]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(10,12,16,0.6)_100%)]" />
-        <svg className="absolute inset-0 w-full h-full opacity-[0.04]" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
-              <path d="M 48 0 L 0 0 0 48" fill="none" stroke="white" strokeWidth="0.5" />
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#grid)" />
-        </svg>
-      </div>
+    <div
+      className="relative min-h-screen w-full overflow-hidden"
+      style={{ background: 'rgb(var(--surface-base))', color: 'var(--text-primary)' }}
+    >
+      {/* ─── Aurora background ─── */}
+      <Particles variant="aurora" className="absolute inset-0 pointer-events-none" />
+
+      {/* Soft vignette to keep card legible */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(circle at 50% 50%, transparent 0%, rgba(0,0,0,0.45) 100%)',
+        }}
+      />
+
+      {/* Subtle grid */}
+      <svg
+        className="absolute inset-0 w-full h-full opacity-[0.03] pointer-events-none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden
+      >
+        <defs>
+          <pattern id="login-grid" width="48" height="48" patternUnits="userSpaceOnUse">
+            <path d="M 48 0 L 0 0 0 48" fill="none" stroke="currentColor" strokeWidth="0.5" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#login-grid)" />
+      </svg>
 
       <div className="relative z-10 grid min-h-screen w-full grid-cols-1 lg:grid-cols-[1.1fr_1fr]">
-        {/* ─── Panel izquierdo — hero marketing ─── */}
+        {/* ─── Left — hero marketing ─── */}
         <section className="flex flex-col justify-between px-8 py-10 lg:px-16 lg:py-14">
           <motion.div
             initial={{ opacity: 0, y: -8 }}
@@ -108,7 +103,14 @@ export default function LoginPage() {
             transition={{ duration: 0.6, ease: EASE }}
             className="flex items-center gap-3"
           >
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent-500 to-primary flex items-center justify-center text-white font-bold shadow-glow-sm">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold"
+              style={{
+                background:
+                  'linear-gradient(135deg, rgb(var(--brand-primary)), rgb(var(--brand-secondary)))',
+                boxShadow: '0 8px 32px -12px rgb(var(--brand-primary) / 0.6)',
+              }}
+            >
               S
             </div>
             <GradientText
@@ -127,7 +129,7 @@ export default function LoginPage() {
               transition={{ duration: 0.45, ease: EASE, delay: 0.1 }}
             >
               <ShinyText
-                text="· SaaS de facturación universal ·"
+                text={`· ${t('login.tagline')} ·`}
                 speed={3}
                 className="text-xs uppercase tracking-[0.22em] font-medium"
                 color="#63636e"
@@ -137,9 +139,9 @@ export default function LoginPage() {
 
             <div className="space-y-3">
               <SplitText
-                text="Tu sistema,"
+                text={t('login.heroLine1')}
                 tag="h1"
-                className="text-5xl lg:text-6xl font-semibold tracking-tight text-ink-100 leading-[1.05]"
+                className="text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]"
                 delay={0.02}
               />
               <div className="flex items-baseline gap-3 flex-wrap">
@@ -148,25 +150,33 @@ export default function LoginPage() {
                   animationSpeed={6}
                   className="text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]"
                 >
-                  hecho a medida.
+                  {t('login.heroLine2')}
                 </GradientText>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-lg text-ink-400">
-              <span>Pensado para</span>
+            <div
+              className="flex items-center gap-2 text-lg"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              <span>{t('login.builtFor')}</span>
               <RotatingText
-                texts={['papelerías', 'carnicerías', 'electrónica', 'tu rubro']}
+                texts={[
+                  t('login.rubro.papeleria'),
+                  t('login.rubro.carniceria'),
+                  t('login.rubro.electronica'),
+                  t('login.rubro.yours'),
+                ]}
                 rotationInterval={2600}
                 staggerDuration={0.03}
-                mainClassName="text-lg font-medium text-accent-light"
-                elementLevelClassName="text-accent-light"
+                mainClassName="text-lg font-medium"
+                elementLevelClassName=""
               />
             </div>
 
             <BlurText
-              text="Introduce el token que recibiste al contratar el plan. El sistema reconocerá tu rubro y desplegará automáticamente el panel adaptado a tu negocio."
-              className="max-w-xl text-ink-400 text-base leading-relaxed"
+              text={t('login.heroDescription')}
+              className="max-w-xl text-base leading-relaxed"
               delay={0.06}
             />
 
@@ -178,22 +188,32 @@ export default function LoginPage() {
               className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4"
             >
               {[
-                { icon: Shield, label: '30 días vigentes', hint: 'por token' },
-                { icon: Sparkles, label: 'Branding propio', hint: 'logo + colores' },
-                { icon: KeyRound, label: 'Plantilla lista', hint: 'al activar' },
-              ].map((f, i) => (
+                { icon: Shield, label: t('login.feat.validity'), hint: t('login.feat.validityHint') },
+                { icon: Sparkles, label: t('login.feat.branding'), hint: t('login.feat.brandingHint') },
+                { icon: KeyRound, label: t('login.feat.rotating'), hint: t('login.feat.rotatingHint') },
+              ].map((f) => (
                 <SpotlightCard
                   key={f.label}
                   spotlightColor="rgba(110, 86, 207, 0.14)"
                   className="p-4"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-accent-500/10 text-accent-light flex items-center justify-center">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center"
+                      style={{
+                        background: 'rgb(var(--brand-primary) / 0.1)',
+                        color: 'rgb(var(--brand-primary))',
+                      }}
+                    >
                       <f.icon size={15} />
                     </div>
                     <div>
-                      <div className="text-sm font-medium text-ink-200">{f.label}</div>
-                      <div className="text-xs text-ink-500">{f.hint}</div>
+                      <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                        {f.label}
+                      </div>
+                      <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                        {f.hint}
+                      </div>
                     </div>
                   </div>
                 </SpotlightCard>
@@ -205,16 +225,15 @@ export default function LoginPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.5 }}
-            className="flex items-center gap-2 text-xs text-ink-500"
+            className="flex items-center gap-2 text-xs"
+            style={{ color: 'var(--text-muted)' }}
           >
-            <span>¿No tienes token aún?</span>
-            <span className="text-ink-300">
-              Contacta a tu vendedor Solanium para recibir tu licencia de 30 días.
-            </span>
+            <span>{t('login.noCodeYet')}</span>
+            <span style={{ color: 'var(--text-secondary)' }}>{t('login.contactVendor')}</span>
           </motion.div>
         </section>
 
-        {/* ─── Panel derecho — card de login ─── */}
+        {/* ─── Right — login card ─── */}
         <section className="flex items-center justify-center px-8 py-10 lg:px-12">
           <motion.div
             initial={{ opacity: 0, y: 16 }}
@@ -224,62 +243,77 @@ export default function LoginPage() {
           >
             <SpotlightCard
               spotlightColor="rgba(34, 211, 238, 0.16)"
-              className="p-8 lg:p-10 bg-surface-base/80 backdrop-blur-xl"
+              className="p-8 lg:p-10 backdrop-blur-xl"
             >
               <div className="space-y-6">
                 <div className="space-y-1.5">
-                  <div className="text-xs uppercase tracking-[0.2em] font-medium text-ink-500">
-                    {mode === 'activate' ? 'Paso 1 · Activación' : 'Iniciar sesión'}
+                  <div
+                    className="text-xs uppercase tracking-[0.2em] font-medium"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    {mode === 'activate' ? t('login.step1') : t('login.signIn')}
                   </div>
-                  <h2 className="text-2xl font-semibold tracking-tight text-ink-100">
+                  <h2
+                    className="text-2xl font-semibold tracking-tight"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
                     {mode === 'activate' ? (
                       <>
-                        Entra con tu{' '}
+                        {t('login.enterWith')}{' '}
                         <DecryptedText
-                          text="token"
+                          text={t('login.codeWord')}
                           animateOn="view"
-                          className="text-accent-light"
-                          encryptedClassName="text-ink-700"
+                          className=""
+                          encryptedClassName=""
                         />
                       </>
                     ) : (
-                      'Bienvenido de vuelta'
+                      t('login.welcomeBack')
                     )}
                   </h2>
-                  <p className="text-sm text-ink-500">
-                    {mode === 'activate'
-                      ? 'Pega el token de 30 días que te entregamos al comprar el plan.'
-                      : 'Ingresa con tu cuenta del equipo para continuar.'}
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                    {mode === 'activate' ? t('login.codeRotates') : t('login.signInHint')}
                   </p>
                 </div>
 
                 {/* Tabs */}
-                <div className="relative grid grid-cols-2 p-1 rounded-xl bg-white/[0.03] border border-white/[0.04]">
+                <div
+                  className="relative grid grid-cols-2 p-1 rounded-xl"
+                  style={{
+                    background: 'rgb(var(--surface-raised))',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
                   {(['activate', 'login'] as const).map((m) => (
                     <button
                       key={m}
                       type="button"
                       onClick={() => setMode(m)}
-                      className={`relative py-2 text-xs font-medium uppercase tracking-wider transition-colors rounded-lg ${
-                        mode === m ? 'text-ink-950' : 'text-ink-400 hover:text-ink-200'
-                      }`}
+                      className="relative py-2 text-xs font-medium uppercase tracking-wider transition-colors rounded-lg"
+                      style={{
+                        color:
+                          mode === m
+                            ? 'rgb(var(--surface-base))'
+                            : 'var(--text-secondary)',
+                      }}
                     >
                       {mode === m && (
                         <motion.span
                           layoutId="login-tab"
-                          className="absolute inset-0 rounded-lg bg-ink-100"
+                          className="absolute inset-0 rounded-lg"
+                          style={{ background: 'var(--text-primary)' }}
                           transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                         />
                       )}
                       <span className="relative z-10">
-                        {m === 'activate' ? 'Activar' : 'Iniciar sesión'}
+                        {m === 'activate' ? t('login.tab.activate') : t('login.tab.signIn')}
                       </span>
                     </button>
                   ))}
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                  <TokenField value={activationToken} onChange={setActivationToken} />
+                  <CodeField value={code} onChange={setCode} t={t} />
 
                   <AnimatePresence initial={false}>
                     {mode === 'login' && (
@@ -292,7 +326,7 @@ export default function LoginPage() {
                         className="space-y-4 overflow-hidden"
                       >
                         <Field
-                          label="Email"
+                          label={t('common.email')}
                           icon={<Mail size={14} />}
                           type="email"
                           placeholder="tu@empresa.com"
@@ -301,7 +335,7 @@ export default function LoginPage() {
                           autoComplete="email"
                         />
                         <Field
-                          label="Contraseña"
+                          label={t('common.password')}
                           icon={<Lock size={14} />}
                           type="password"
                           placeholder="••••••••"
@@ -317,7 +351,12 @@ export default function LoginPage() {
                     <motion.div
                       initial={{ opacity: 0, y: -4 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"
+                      className="text-xs rounded-lg px-3 py-2"
+                      style={{
+                        color: 'rgb(var(--danger))',
+                        background: 'rgb(var(--danger) / 0.1)',
+                        border: '1px solid rgb(var(--danger) / 0.2)',
+                      }}
                     >
                       {error}
                     </motion.div>
@@ -332,16 +371,17 @@ export default function LoginPage() {
                     className="w-full"
                   >
                     {submitting
-                      ? 'Validando…'
+                      ? t('login.validating')
                       : mode === 'activate'
-                      ? 'Activar sistema'
-                      : 'Entrar'}
+                      ? t('login.activate')
+                      : t('login.enter')}
                   </ShineButton>
 
-                  <div className="text-[11px] text-ink-600 text-center leading-relaxed">
-                    Al continuar aceptas las condiciones del plan Solanium.
-                    <br />
-                    El token se verifica contra <code className="text-ink-400">/activation/verify</code>.
+                  <div
+                    className="text-[11px] text-center leading-relaxed"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    {t('login.terms')}
                   </div>
                 </form>
               </div>
@@ -354,7 +394,7 @@ export default function LoginPage() {
 }
 
 // ═════════════════════════════════════════════════════════════════════
-// Sub-componentes locales (inputs con glass + focus ring)
+// Local sub-components — input fields with theme-aware styling
 // ═════════════════════════════════════════════════════════════════════
 
 function Field({
@@ -376,50 +416,100 @@ function Field({
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-xs uppercase tracking-wider font-medium text-ink-500">
+      <span
+        className="text-xs uppercase tracking-wider font-medium"
+        style={{ color: 'var(--text-muted)' }}
+      >
         {label}
       </span>
       <div className="relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-500">{icon}</span>
+        <span
+          className="absolute left-3 top-1/2 -translate-y-1/2"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          {icon}
+        </span>
         <input
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           autoComplete={autoComplete}
-          className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm bg-white/[0.03] border border-white/[0.06] text-ink-100 placeholder-ink-600 outline-none transition-all focus:border-accent-500/40 focus:bg-white/[0.05] focus:ring-2 focus:ring-accent-500/15"
+          className="w-full pl-9 pr-3"
         />
       </div>
     </label>
   );
 }
 
-function TokenField({
+function CodeField({
   value,
   onChange,
+  t,
 }: {
   value: string;
   onChange: (v: string) => void;
+  t: (key: string) => string;
 }) {
+  const refs = useRef<Array<HTMLInputElement | null>>([]);
+  const digits = value.padEnd(6, ' ').slice(0, 6).split('');
+
+  const setDigit = (i: number, d: string) => {
+    const clean = d.replace(/\D/g, '').slice(0, 1);
+    const next = digits.map((x) => (x === ' ' ? '' : x));
+    next[i] = clean;
+    const joined = next.join('').slice(0, 6);
+    onChange(joined);
+    if (clean && i < 5) refs.current[i + 1]?.focus();
+  };
+
+  const handleKeyDown = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !digits[i].trim() && i > 0) {
+      refs.current[i - 1]?.focus();
+    }
+    if (e.key === 'ArrowLeft' && i > 0) refs.current[i - 1]?.focus();
+    if (e.key === 'ArrowRight' && i < 5) refs.current[i + 1]?.focus();
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!pasted) return;
+    e.preventDefault();
+    onChange(pasted);
+    refs.current[Math.min(pasted.length, 5)]?.focus();
+  };
+
   return (
-    <label className="block space-y-1.5">
-      <span className="flex items-center justify-between text-xs uppercase tracking-wider font-medium text-ink-500">
-        <span>Token de activación</span>
-        <span className="text-[10px] text-ink-600 normal-case tracking-normal">64 chars hex</span>
-      </span>
-      <div className="relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-500">
-          <KeyRound size={14} />
+    <label className="block space-y-2">
+      <span
+        className="flex items-center justify-between text-xs uppercase tracking-wider font-medium"
+        style={{ color: 'var(--text-muted)' }}
+      >
+        <span className="flex items-center gap-1.5">
+          <KeyRound size={12} /> {t('login.accessCode')}
         </span>
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value.trim())}
-          placeholder="a1b2c3d4e5f6…"
-          spellCheck={false}
-          autoComplete="off"
-          className="w-full pl-9 pr-3 py-2.5 rounded-xl text-sm font-mono bg-white/[0.03] border border-white/[0.06] text-ink-100 placeholder-ink-700 outline-none transition-all focus:border-accent-500/40 focus:bg-white/[0.05] focus:ring-2 focus:ring-accent-500/15"
-        />
+        <span className="text-[10px] normal-case tracking-normal">
+          {t('login.sixDigits')}
+        </span>
+      </span>
+      <div className="grid grid-cols-6 gap-2">
+        {digits.map((d, i) => (
+          <input
+            key={i}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={1}
+            value={d.trim()}
+            onChange={(e) => setDigit(i, e.target.value)}
+            onKeyDown={(e) => handleKeyDown(i, e)}
+            onPaste={handlePaste}
+            autoComplete="one-time-code"
+            className="aspect-square w-full text-center text-lg font-semibold font-mono !px-0"
+          />
+        ))}
       </div>
     </label>
   );

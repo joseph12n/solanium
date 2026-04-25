@@ -32,13 +32,20 @@ async function revoke(req, res, next) {
   } catch (err) { next(err); }
 }
 
+/**
+ * Verifica un code de 6 dígitos o (retrocompat) un Bearer largo y devuelve
+ * el tenant + activation asociados. Es el endpoint que llama el Hero de login.
+ */
 async function verify(req, res, next) {
   try {
-    const token = (req.body?.token || req.query?.token || '').trim();
-    if (!token) {
-      return res.status(400).json({ error: 'token_required', message: 'Envía { token } en el body o ?token=' });
+    const input = (req.body?.code || req.body?.token || req.query?.code || req.query?.token || '').trim();
+    if (!input) {
+      return res.status(400).json({
+        error: 'credential_required',
+        message: 'Envía { code } (6 dígitos) en el body',
+      });
     }
-    const row = await svc.verify(token);
+    const row = await svc.verify(input);
     res.json({
       data: {
         valid: true,
@@ -54,12 +61,57 @@ async function verify(req, res, next) {
         activation: {
           id: row.id,
           plan: row.plan,
+          subscription_type: row.subscription_type,
           template_slug: row.template_slug,
           expires_at: row.expires_at,
+          // El Bearer largo se entrega sólo al verificar con code válido.
+          // Es lo que el frontend guarda como solanium.token para llamadas API.
+          session_token: row.token,
         },
       },
     });
   } catch (err) { next(err); }
 }
 
-module.exports = { onboard, listMine, listAll, renew, revoke, verify };
+/**
+ * Super-admin: obtener el code vigente de un tenant (rota si venció).
+ * Útil en desarrollo para validar vistas sin cron de email.
+ */
+async function currentCode(req, res, next) {
+  try {
+    const tenantSlug = req.query.tenant_slug || req.params.slug;
+    const tenantId = req.query.tenant_id;
+    if (!tenantSlug && !tenantId) {
+      return res.status(400).json({ error: 'tenant_required', message: 'Envía tenant_slug o tenant_id' });
+    }
+    res.json({ data: await svc.getCurrentCode({ tenantId, tenantSlug }) });
+  } catch (err) { next(err); }
+}
+
+/**
+ * Super-admin: fuerza rotación inmediata del code para un token dado.
+ */
+async function refreshCode(req, res, next) {
+  try {
+    const row = await svc.forceRefreshCode(req.params.id);
+    res.json({
+      data: {
+        id: row.id,
+        code: row.code,
+        code_refreshed_at: row.code_refreshed_at,
+        tenant_slug: row.tenant_slug,
+      },
+    });
+  } catch (err) { next(err); }
+}
+
+module.exports = {
+  onboard,
+  listMine,
+  listAll,
+  renew,
+  revoke,
+  verify,
+  currentCode,
+  refreshCode,
+};

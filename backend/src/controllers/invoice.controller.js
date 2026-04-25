@@ -43,4 +43,16 @@ async function summary(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { list, getById, create, update, remove, summary };
+async function markAsPaid(req, res, next) {
+  try {
+    res.json({ data: await svc.markAsPaid(req.tenant, req.params.id) });
+  } catch (err) { next(err); }
+}
+
+async function sendEmail(req, res, next) {
+  try {
+    res.json({ data: await svc.sendEmail(req.tenant, req.params.id, { to: req.body?.to }) });
+  } catch (err) { next(err); }
+}
+
+module.exports = { list, getById, create, update, remove, summary, markAsPaid, sendEmail };

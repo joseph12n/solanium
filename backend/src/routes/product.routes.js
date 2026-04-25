@@ -10,6 +10,7 @@ router.get('/', ctrl.list);
 router.get('/:id', ctrl.getById);
 router.post('/', ctrl.create);
 router.patch('/:id', ctrl.update);
+router.post('/:id/adjust-stock', ctrl.adjustStock);
 router.delete('/:id', ctrl.remove);
 
 module.exports = router;

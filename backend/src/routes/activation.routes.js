@@ -4,17 +4,25 @@ const { authMiddleware, requireSuperAdmin } = require('../middleware/auth.middle
 
 const router = Router();
 
-// Público: validar un token (útil para el frontend al cargar)
+// ─── Público ──────────────────────────────────────────────────────────
+// Verificar un code de 6 dígitos (flujo principal del Hero /login).
 router.post('/verify', ctrl.verify);
-router.get('/verify', ctrl.verify);
+router.get('/verify',  ctrl.verify);
 
-// Super-admin: emisión, listado global, renovación y revocación
+// ─── Super-admin ──────────────────────────────────────────────────────
+// Emisión de licencia (onboarding).
 router.post('/onboard', requireSuperAdmin, ctrl.onboard);
-router.get('/', requireSuperAdmin, ctrl.listAll);
-router.post('/:id/renew', requireSuperAdmin, ctrl.renew);
+// Listado global de tokens.
+router.get('/',         requireSuperAdmin, ctrl.listAll);
+// Ver el code vigente de un tenant (rota si expiró).
+router.get('/current-code', requireSuperAdmin, ctrl.currentCode);
+// Forzar rotación de un code (cron manual).
+router.post('/:id/refresh-code', requireSuperAdmin, ctrl.refreshCode);
+// Renovar fecha de expiración o revocar suscripción.
+router.post('/:id/renew',  requireSuperAdmin, ctrl.renew);
 router.post('/:id/revoke', requireSuperAdmin, ctrl.revoke);
 
-// Tenant: listar sus propios tokens activos
+// ─── Tenant autenticado ───────────────────────────────────────────────
 router.get('/mine', authMiddleware, ctrl.listMine);
 
 module.exports = router;

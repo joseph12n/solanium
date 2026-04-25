@@ -67,4 +67,38 @@ async function summary(tenant) {
   return invoiceRepo.summary(tenant.id);
 }
 
-module.exports = { list, getById, create, update, remove, summary, InvoiceServiceError };
+async function markAsPaid(tenant, id) {
+  const inv = await invoiceRepo.findById(tenant.id, id);
+  if (!inv) throw new InvoiceServiceError('Factura no encontrada', { status: 404, code: 'not_found' });
+  if (inv.estado === 'anulada') {
+    throw new InvoiceServiceError('No se puede pagar una factura anulada', { status: 409, code: 'invalid_state' });
+  }
+  return invoiceRepo.update(tenant.id, id, {
+    estado: 'pagada',
+    metadata: { ...(inv.metadata || {}), paid_at: new Date().toISOString() },
+  });
+}
+
+/**
+ * Placeholder de envío por email — registra el intento en metadata.email_log.
+ * En producción se enchufa un transport (SES, Resend, SendGrid, nodemailer).
+ */
+async function sendEmail(tenant, id, { to } = {}) {
+  const inv = await invoiceRepo.findById(tenant.id, id);
+  if (!inv) throw new InvoiceServiceError('Factura no encontrada', { status: 404, code: 'not_found' });
+  const recipient = to || inv.cliente_email;
+  if (!recipient) {
+    throw new InvoiceServiceError('Sin destinatario: el cliente no tiene email', {
+      status: 422,
+      code: 'missing_recipient',
+    });
+  }
+  const log = Array.isArray(inv.metadata?.email_log) ? [...inv.metadata.email_log] : [];
+  log.push({ to: recipient, sent_at: new Date().toISOString(), status: 'queued' });
+  await invoiceRepo.update(tenant.id, id, {
+    metadata: { ...(inv.metadata || {}), email_log: log.slice(-20) },
+  });
+  return { sent: true, to: recipient, queued_at: log[log.length - 1].sent_at };
+}
+
+module.exports = { list, getById, create, update, remove, summary, markAsPaid, sendEmail, InvoiceServiceError };

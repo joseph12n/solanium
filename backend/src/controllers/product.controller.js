@@ -34,7 +34,25 @@ async function create(req, res, next) {
 
 async function update(req, res, next) {
   try {
-    const product = await productService.update(req.tenant, req.params.id, req.body);
+    const product = await productService.update(req.tenant, req.params.id, req.body, {
+      userId: req.user?.id || null,
+    });
+    res.json({ data: product });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function adjustStock(req, res, next) {
+  try {
+    const delta = Number(req.body?.delta);
+    if (!Number.isFinite(delta) || delta === 0) {
+      return res.status(400).json({ error: 'delta debe ser un número distinto de cero' });
+    }
+    const product = await productService.adjustStock(req.tenant, req.params.id, delta, {
+      reason: req.body?.reason || null,
+      userId: req.user?.id || null,
+    });
     res.json({ data: product });
   } catch (err) {
     next(err);
@@ -50,4 +68,4 @@ async function remove(req, res, next) {
   }
 }
 
-module.exports = { list, getById, create, update, remove };
+module.exports = { list, getById, create, update, adjustStock, remove };

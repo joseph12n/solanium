@@ -47,7 +47,31 @@ async function create(tenantId, data) {
   return rows[0];
 }
 
-async function update(tenantId, id, data) {
+async function update(tenantId, id, data, { changedBy = null } = {}) {
+  const current = await findById(tenantId, id);
+  if (!current) return null;
+
+  const priceChanged =
+    data.precio !== undefined &&
+    data.precio !== null &&
+    Number(data.precio) !== Number(current.precio);
+
+  let mergedMetadata = data.metadata
+    ? { ...(current.metadata || {}), ...data.metadata }
+    : null;
+
+  if (priceChanged) {
+    const base = mergedMetadata || { ...(current.metadata || {}) };
+    const history = Array.isArray(base.price_history) ? [...base.price_history] : [];
+    history.push({
+      price: Number(current.precio),
+      changed_at: new Date().toISOString(),
+      changed_by: changedBy,
+    });
+    base.price_history = history.slice(-50);
+    mergedMetadata = base;
+  }
+
   const { rows } = await query(
     `UPDATE products SET
        nombre      = COALESCE($3, nombre),
@@ -68,8 +92,33 @@ async function update(tenantId, id, data) {
       data.stock ?? null,
       data.unidad ?? null,
       data.activo ?? null,
-      data.metadata ? JSON.stringify(data.metadata) : null,
+      mergedMetadata ? JSON.stringify(mergedMetadata) : null,
     ]
+  );
+  return rows[0] || null;
+}
+
+async function adjustStock(tenantId, id, delta, { reason = null, changedBy = null } = {}) {
+  const current = await findById(tenantId, id);
+  if (!current) return null;
+
+  const nextStock = Number(current.stock || 0) + Number(delta);
+  const base = { ...(current.metadata || {}) };
+  const movements = Array.isArray(base.stock_movements) ? [...base.stock_movements] : [];
+  movements.push({
+    delta: Number(delta),
+    new_stock: nextStock,
+    reason,
+    changed_at: new Date().toISOString(),
+    changed_by: changedBy,
+  });
+  base.stock_movements = movements.slice(-100);
+
+  const { rows } = await query(
+    `UPDATE products SET stock = $3, metadata = $4
+     WHERE tenant_id = $1 AND id = $2
+     RETURNING *`,
+    [tenantId, id, nextStock, JSON.stringify(base)]
   );
   return rows[0] || null;
 }
@@ -82,4 +131,4 @@ async function remove(tenantId, id) {
   return rowCount > 0;
 }
 
-module.exports = { listByTenant, findById, create, update, remove };
+module.exports = { listByTenant, findById, create, update, adjustStock, remove };

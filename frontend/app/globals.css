@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 /* ========================================
-   SOLANIUM — Premium Design System v2
-   Paleta refinada · Double-Bezel · Emil K.
+   SOLANIUM — Premium Design System v3
+   Dark + Light · Template Skin · ReactBits
    ======================================== */
 
 :root {
@@ -13,35 +13,72 @@
   /* ── Tipografía ── */
   --font-sans: 'Outfit', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-serif: 'Instrument Serif', Georgia, serif;
 
-  /* ── Paleta primaria ── */
-  --primary: 10 157 127;       /* Esmeralda #0a9d7f */
-  --primary-light: 16 185 129; /* Esmeralda clara */
-  --accent: 110 86 207;        /* Violeta #6e56cf */
-  --accent-light: 142 118 230; /* Violeta claro */
+  /* ── Paleta primaria (dark default) ── */
+  --primary: 10 157 127;
+  --primary-light: 16 185 129;
+  --accent: 110 86 207;
+  --accent-light: 142 118 230;
 
-  /* ── Superficies ── */
-  --surface-base: 8 9 13;      /* #08090d — tinted dark frío */
-  --surface-raised: 14 15 21;  /* #0e0f15 */
-  --surface-overlay: 20 21 30; /* #14151e */
-  --surface-card: 22 24 34;    /* #161822 */
+  /* ── Brand (sobreescrito por LayoutShell desde tenant/template) ── */
+  --brand-primary: 110 86 207;
+  --brand-secondary: 16 185 129;
 
-  /* ── Bordes ── */
+  /* ── Estado semántico ── */
+  --warn: 234 179 8;
+  --danger: 239 68 68;
+  --success: 16 185 129;
+  --info: 56 189 248;
+
+  /* ── Superficies (dark) ── */
+  --surface-base: 8 9 13;
+  --surface-raised: 14 15 21;
+  --surface-overlay: 20 21 30;
+  --surface-card: 22 24 34;
+
+  /* ── Bordes (dark) ── */
   --border-subtle: rgba(255, 255, 255, 0.04);
   --border-default: rgba(255, 255, 255, 0.07);
   --border-hover: rgba(255, 255, 255, 0.14);
   --border-accent: rgba(110, 86, 207, 0.3);
 
-  /* ── Texto ── */
+  /* ── Texto (dark) ── */
   --text-primary: #f0f0f2;
   --text-secondary: #a1a1aa;
   --text-muted: #63636e;
 
-  /* ── Easing (Emil Kowalski) ── */
+  /* ── Noise (dark) ── */
+  --noise-opacity: 0.025;
+
+  /* ── Easing ── */
   --ease-out-expo: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out-expo: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ========================================
+   Light mode overrides (activado vía <html class="light">)
+   ======================================== */
+:root.light {
+  color-scheme: light;
+
+  --surface-base: 248 249 252;
+  --surface-raised: 255 255 255;
+  --surface-overlay: 244 246 251;
+  --surface-card: 255 255 255;
+
+  --border-subtle: rgba(15, 23, 42, 0.05);
+  --border-default: rgba(15, 23, 42, 0.09);
+  --border-hover: rgba(15, 23, 42, 0.16);
+  --border-accent: rgba(110, 86, 207, 0.28);
+
+  --text-primary: #0f0f11;
+  --text-secondary: #52525b;
+  --text-muted: #71717a;
+
+  --noise-opacity: 0.012;
 }
 
 html {
@@ -56,6 +93,7 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: 'ss01', 'cv11';
   letter-spacing: -0.011em;
+  transition: background-color 400ms var(--ease-out-expo), color 300ms var(--ease-out-expo);
 }
 
 /* ========================================
@@ -67,14 +105,14 @@ body::after {
   inset: 0;
   z-index: 50;
   pointer-events: none;
-  opacity: 0.025;
+  opacity: var(--noise-opacity);
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
   background-repeat: repeat;
   background-size: 256px 256px;
 }
 
 /* ========================================
-   Double-Bezel Architecture (High-End)
+   Double-Bezel Architecture
    ======================================== */
 .bezel {
   position: relative;
@@ -88,6 +126,15 @@ body::after {
   );
 }
 
+:root.light .bezel {
+  background: linear-gradient(
+    135deg,
+    rgba(15, 23, 42, 0.09) 0%,
+    rgba(15, 23, 42, 0.02) 50%,
+    rgba(15, 23, 42, 0.06) 100%
+  );
+}
+
 .bezel-inner {
   border-radius: calc(1.25rem - 1px);
   background: rgb(var(--surface-card));
@@ -97,12 +144,37 @@ body::after {
     0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
+:root.light .bezel-inner {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 4px 16px -6px rgba(15, 23, 42, 0.08),
+    0 1px 3px rgba(15, 23, 42, 0.05);
+}
+
 .bezel-lg {
   border-radius: 1.5rem;
   padding: 1px;
 }
 .bezel-lg .bezel-inner {
   border-radius: calc(1.5rem - 1px);
+}
+
+/* ── Template card-style variants ── */
+:root[data-card-style="flat"] .bezel {
+  padding: 0;
+  background: transparent;
+}
+:root[data-card-style="flat"] .bezel-inner {
+  border: 1px solid var(--border-default);
+  box-shadow: none;
+}
+:root[data-card-style="bordered"] .bezel {
+  padding: 0;
+  background: transparent;
+}
+:root[data-card-style="bordered"] .bezel-inner {
+  border: 2px solid var(--border-accent);
+  box-shadow: none;
 }
 
 /* ========================================
@@ -119,6 +191,14 @@ body::after {
     0 0 0 1px var(--border-subtle);
 }
 
+:root.light .glass {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.6),
+    rgba(255, 255, 255, 0.3)
+  );
+}
+
 .glass-strong {
   background: linear-gradient(
     180deg,
@@ -131,8 +211,17 @@ body::after {
     0 0 0 1px var(--border-default);
 }
 
+:root.light .glass-strong {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.85),
+    rgba(255, 255, 255, 0.55)
+  );
+  backdrop-filter: blur(28px);
+}
+
 /* ========================================
-   Hairline borders (refined)
+   Hairline borders
    ======================================== */
 .hairline {
   box-shadow: inset 0 0 0 1px var(--border-subtle);
@@ -168,7 +257,7 @@ body::after {
 }
 
 /* ========================================
-   Scrollbar minimalista (tinted)
+   Scrollbar
    ======================================== */
 ::-webkit-scrollbar {
   width: 5px;
@@ -186,7 +275,7 @@ body::after {
 }
 
 /* ========================================
-   Inputs (premium dark)
+   Inputs
    ======================================== */
 input, textarea, select {
   @apply rounded-xl px-4 py-2.5 text-sm outline-none transition-all;
@@ -213,7 +302,7 @@ input:focus, textarea:focus, select:focus {
   @apply inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-full;
 }
 .badge-ghost {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(127, 127, 140, 0.1);
   color: var(--text-secondary);
 }
 .badge-accent {
@@ -222,20 +311,47 @@ input:focus, textarea:focus, select:focus {
 }
 .badge-green {
   background: rgba(16, 185, 129, 0.12);
-  color: #34d399;
+  color: #059669;
 }
+:root:not(.light) .badge-green { color: #34d399; }
 .badge-orange {
   background: rgba(249, 115, 22, 0.12);
-  color: #fb923c;
+  color: #ea580c;
 }
+:root:not(.light) .badge-orange { color: #fb923c; }
 .badge-red {
   background: rgba(239, 68, 68, 0.12);
-  color: #f87171;
+  color: #dc2626;
 }
+:root:not(.light) .badge-red { color: #f87171; }
 .badge-cyan {
   background: rgba(6, 182, 212, 0.12);
-  color: #22d3ee;
+  color: #0891b2;
 }
+:root:not(.light) .badge-cyan { color: #22d3ee; }
+
+/* ========================================
+   Template button-style variants
+   ======================================== */
+:root[data-button-style="pill"] .shine-button,
+:root[data-button-style="pill"] button.btn-themed {
+  border-radius: 9999px;
+}
+:root[data-button-style="sharp"] .shine-button,
+:root[data-button-style="sharp"] button.btn-themed {
+  border-radius: 6px;
+}
+:root[data-button-style="rounded"] .shine-button,
+:root[data-button-style="rounded"] button.btn-themed {
+  border-radius: 12px;
+}
+
+/* ========================================
+   Template typography-scale variants
+   ======================================== */
+:root[data-type-scale="compact"] { font-size: 14px; }
+:root[data-type-scale="default"] { font-size: 16px; }
+:root[data-type-scale="spacious"] { font-size: 17px; }
 
 /* ========================================
    Accessibility — reduced motion
@@ -288,4 +404,39 @@ input:focus, textarea:focus, select:focus {
     black 92%,
     transparent 100%
   );
+}
+
+/* ========================================
+   Background canvas stacking (ReactBits)
+   ======================================== */
+.bg-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.content-layer {
+  position: relative;
+  z-index: 10;
+}
+
+/* ========================================
+   Print — PDF preview
+   ======================================== */
+@media print {
+  body::after,
+  .no-print,
+  aside,
+  header,
+  .bg-canvas {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .print-page {
+    page-break-after: always;
+  }
 }

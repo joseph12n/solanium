@@ -40,7 +40,7 @@ async function create(tenant, payload) {
   return productRepo.create(tenant.id, validated);
 }
 
-async function update(tenant, id, payload) {
+async function update(tenant, id, payload, { userId = null } = {}) {
   const existing = await productRepo.findById(tenant.id, id);
   if (!existing) {
     throw new ProductServiceError('Producto no encontrado', { status: 404, code: 'not_found' });
@@ -57,7 +57,15 @@ async function update(tenant, id, payload) {
       });
     }
   }
-  return productRepo.update(tenant.id, id, payload);
+  return productRepo.update(tenant.id, id, payload, { changedBy: userId });
+}
+
+async function adjustStock(tenant, id, delta, { reason = null, userId = null } = {}) {
+  const updated = await productRepo.adjustStock(tenant.id, id, delta, { reason, changedBy: userId });
+  if (!updated) {
+    throw new ProductServiceError('Producto no encontrado', { status: 404, code: 'not_found' });
+  }
+  return updated;
 }
 
 async function remove(tenant, id) {
@@ -68,4 +76,4 @@ async function remove(tenant, id) {
   return { deleted: true };
 }
 
-module.exports = { list, getById, create, update, remove, ProductServiceError };
+module.exports = { list, getById, create, update, adjustStock, remove, ProductServiceError };

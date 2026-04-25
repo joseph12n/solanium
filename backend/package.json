@@ -8,6 +8,7 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "migrate": "node src/db/migrate.js",
+    "seed:test": "node src/db/seed-test-data.js",
     "test:api": "node tests/testApiModule.js"
   },
   "dependencies": {

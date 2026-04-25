@@ -36,7 +36,7 @@ async function create(tenantId, data) {
     }
     const { rows } = await client.query(
       `INSERT INTO invoice_templates (tenant_id, slug, nombre, descripcion, is_default, theme, defaults)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)
        RETURNING *`,
       [
         tenantId,
@@ -44,8 +44,8 @@ async function create(tenantId, data) {
         data.nombre,
         data.descripcion ?? null,
         data.is_default ?? false,
-        data.theme ?? {},
-        data.defaults ?? {},
+        JSON.stringify(data.theme ?? {}),
+        JSON.stringify(data.defaults ?? {}),
       ]
     );
     return rows[0];

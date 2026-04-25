@@ -43,17 +43,37 @@ export interface SessionUser {
   metadata?: Record<string, unknown>;
 }
 
+export type SubscriptionType = 'monthly' | 'annual';
+
 export interface ActivationSummary {
   id: string;
   plan: PlanKind;
+  subscription_type: SubscriptionType;
   template_slug: string;
   expires_at: string;
+  /**
+   * Bearer largo emitido al validar el code de 6 dígitos. El frontend lo
+   * guarda en localStorage como `solanium.token` y lo envía en Authorization.
+   * Sólo aparece en la respuesta de /activation/verify.
+   */
+  session_token?: string;
 }
 
 export interface VerifyResponse {
   valid: true;
   tenant: Tenant;
   activation: ActivationSummary;
+}
+
+export interface CurrentCodeResponse {
+  tenant_slug: string;
+  tenant_nombre: string;
+  code: string;
+  code_refreshed_at: string;
+  code_ttl_ms: number;
+  expires_at: string;
+  subscription_type: SubscriptionType;
+  plan: PlanKind;
 }
 
 export interface Product {
@@ -85,6 +105,13 @@ export interface Customer {
   updated_at: string;
 }
 
+export type CardStyle = 'bezel' | 'flat' | 'bordered';
+export type ButtonStyle = 'pill' | 'rounded' | 'sharp';
+export type SidebarStyle = 'glass' | 'solid' | 'minimal';
+export type TypeScale = 'compact' | 'default' | 'spacious';
+export type ParticleVariant = 'particles' | 'aurora' | 'none';
+export type PresetStyle = 'minimal' | 'bold' | 'vibrant';
+
 export interface InvoiceTemplateTheme {
   accent: string;
   gradient_from: string;
@@ -93,6 +120,14 @@ export interface InvoiceTemplateTheme {
   layout?: 'modern' | 'compact' | 'minimal' | 'classic';
   logo_position?: 'left' | 'center' | 'right';
   logo_url?: string;
+  // ── App-wide skin ──
+  card_style?: CardStyle;
+  button_style?: ButtonStyle;
+  sidebar_style?: SidebarStyle;
+  typography_scale?: TypeScale;
+  color_primary?: string;
+  color_secondary?: string;
+  particle_variant?: ParticleVariant;
   [k: string]: unknown;
 }
 
@@ -119,6 +154,8 @@ export interface TemplatePreset {
   slug: string;
   nombre: string;
   descripcion: string;
+  tipo_negocio?: TipoNegocio | null;
+  style?: PresetStyle;
   theme: InvoiceTemplateTheme;
   defaults: InvoiceTemplate['defaults'];
 }
@@ -247,6 +284,14 @@ async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
     err.status = res.status;
     err.code = body.error as string | undefined;
     err.details = body.details;
+    if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[api] ${rest.method || 'GET'} ${path} → ${res.status} ${err.code || ''}`,
+        err.message,
+        err.details ?? ''
+      );
+    }
     throw err;
   }
   return res.json();
@@ -254,12 +299,24 @@ async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
 
 export const api = {
   // ─── Activación (SaaS) ─────────────────────────────────────────────
-  verifyActivation: (token: string) =>
-    request<{ data: VerifyResponse }>('/activation/verify', {
+  /**
+   * Verifica un code de 6 dígitos (flujo principal) o un Bearer largo
+   * (re-hidratación al recargar la sesión). El backend decide por el shape.
+   */
+  verifyActivation: (credential: string) => {
+    const clean = credential.trim();
+    const isCode = /^\d{6}$/.test(clean);
+    return request<{ data: VerifyResponse }>('/activation/verify', {
       method: 'POST',
-      body: JSON.stringify({ token }),
+      body: JSON.stringify(isCode ? { code: clean } : { token: clean }),
       skipAuth: true,
-    }),
+    });
+  },
+  /** Super-admin: consultar el code vigente de un tenant. */
+  currentCode: (tenantSlug: string) =>
+    request<{ data: CurrentCodeResponse }>(
+      `/activation/current-code?tenant_slug=${encodeURIComponent(tenantSlug)}`
+    ),
 
   // ─── Users ─────────────────────────────────────────────────────────
   login: (payload: { email: string; password: string; tenant_slug?: string }) =>
@@ -273,6 +330,7 @@ export const api = {
     ),
   me: () => request<{ data: { tenant: Tenant; activation: ActivationSummary | null } }>('/users/me'),
   listUsers: () => request<{ data: SessionUser[] }>('/users'),
+  getUser: (id: string) => request<{ data: SessionUser }>(`/users/${id}`),
   createUser: (payload: Partial<SessionUser> & { password: string }) =>
     request<{ data: SessionUser }>('/users', {
       method: 'POST',
@@ -309,6 +367,11 @@ export const api = {
   updateProduct: (id: string, payload: Partial<Product>) =>
     request<{ data: Product }>(`/products/${id}`, {
       method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  adjustStock: (id: string, payload: { delta: number; reason?: string }) =>
+    request<{ data: Product }>(`/products/${id}/adjust-stock`, {
+      method: 'POST',
       body: JSON.stringify(payload),
     }),
   deleteProduct: (id: string) =>
@@ -378,4 +441,14 @@ export const api = {
   deleteInvoice: (id: string) =>
     request<{ deleted: boolean }>(`/invoices/${id}`, { method: 'DELETE' }),
   invoiceSummary: () => request<{ data: InvoiceSummary }>('/invoices/summary'),
+  markInvoicePaid: (id: string) =>
+    request<{ data: Invoice }>(`/invoices/${id}/mark-paid`, { method: 'POST' }),
+  sendInvoiceEmail: (id: string, to?: string) =>
+    request<{ data: { sent: boolean; to: string; queued_at: string } }>(
+      `/invoices/${id}/send-email`,
+      {
+        method: 'POST',
+        body: JSON.stringify(to ? { to } : {}),
+      }
+    ),
 };

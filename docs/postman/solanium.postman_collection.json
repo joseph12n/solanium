@@ -1,0 +1,1279 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    "name": "Solanium · API completa",
+    "description": "Colección end-to-end para validar todas las APIs del backend Solanium en una sola corrida del Collection Runner.\n\n**Pre-requisitos**\n1. Backend corriendo en `http://localhost:4000` (`cd backend && npm run dev`).\n2. Migraciones aplicadas (`npm run migrate`) y seed cargado (`npm run seed:test`).\n3. Selecciona el environment `Solanium · Local`.\n\n**Cómo correr**\n- Click en `Run collection` → ejecuta los folders en orden (Setup → Reads → CRUD → Super-admin → Cleanup).\n- Cada request guarda automáticamente IDs y tokens en variables de colección, así que no hay que tocar nada.\n- El folder Cleanup elimina los recursos creados durante la corrida; ejecutarla repetidamente es seguro.\n\nVer `docs/postman/README.md` para detalles.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{session_token}}", "type": "string" }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Pre-request global: garantiza que las variables dinámicas existen.",
+          "if (!pm.collectionVariables.get('run_stamp')) {",
+          "  pm.collectionVariables.set('run_stamp', String(Date.now()));",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Aserción global: ningún request debe responder 5xx.",
+          "pm.test('No 5xx server error', function () {",
+          "  pm.expect(pm.response.code).to.be.below(500);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "run_stamp", "value": "" },
+    { "key": "session_token", "value": "" },
+    { "key": "tenant_id", "value": "" },
+    { "key": "activation_id", "value": "" },
+    { "key": "current_code", "value": "" },
+    { "key": "logged_user_id", "value": "" },
+    { "key": "created_user_id", "value": "" },
+    { "key": "customer_id", "value": "" },
+    { "key": "product_id", "value": "" },
+    { "key": "template_id", "value": "" },
+    { "key": "invoice_id", "value": "" },
+    { "key": "new_tenant_id", "value": "" },
+    { "key": "new_tenant_slug", "value": "" },
+    { "key": "new_activation_id", "value": "" },
+    { "key": "new_session_token", "value": "" },
+    { "key": "new_code", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "0 · Setup (auth + bootstrap)",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('ok=true', () => pm.expect(body.ok).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Super-admin · Get current code (auto-rota si venció)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "x-super-admin-key", "value": "{{super_admin_key}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/activation/current-code?tenant_slug={{tenant_slug}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "activation", "current-code"],
+              "query": [{ "key": "tenant_slug", "value": "{{tenant_slug}}" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('Code de 6 dígitos', () => pm.expect(data.code).to.match(/^\\d{6}$/));",
+                  "pm.collectionVariables.set('current_code', data.code);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Public · Verify (con code de 6 dígitos)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{current_code}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/activation/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "activation", "verify"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('valid=true', () => pm.expect(data.valid).to.eql(true));",
+                  "pm.test('Bearer presente (64 hex)', () => pm.expect(data.activation.session_token).to.match(/^[0-9a-f]{64}$/));",
+                  "pm.collectionVariables.set('session_token', data.activation.session_token);",
+                  "pm.collectionVariables.set('tenant_id', data.tenant.id);",
+                  "pm.collectionVariables.set('activation_id', data.activation.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Public · Verify (con Bearer largo, retrocompat)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{session_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/activation/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "activation", "verify"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('valid=true', () => pm.expect(data.valid).to.eql(true));",
+                  "pm.test('Mismo tenant', () => pm.expect(data.tenant.id).to.eql(pm.collectionVariables.get('tenant_id')));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1 · Tenants",
+      "item": [
+        {
+          "name": "List (público)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/api/tenants", "host": ["{{baseUrl}}"], "path": ["api", "tenants"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const arr = pm.response.json().data;",
+                  "pm.test('Array', () => pm.expect(arr).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current (Bearer)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/tenants/current", "host": ["{{baseUrl}}"], "path": ["api", "tenants", "current"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const t = pm.response.json().data;",
+                  "pm.test('Tenant id coincide', () => pm.expect(t.id).to.eql(pm.collectionVariables.get('tenant_id')));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 · Activation (tenant scope)",
+      "item": [
+        {
+          "name": "List mine",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/activation/mine", "host": ["{{baseUrl}}"], "path": ["api", "activation", "mine"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 · Users",
+      "item": [
+        {
+          "name": "Login (admin del tenant)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\",\n  \"tenant_slug\": \"{{tenant_slug}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/users/login", "host": ["{{baseUrl}}"], "path": ["api", "users", "login"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const { user, tenant } = pm.response.json().data;",
+                  "pm.test('User devuelto', () => pm.expect(user.id).to.be.a('string'));",
+                  "pm.test('Tenant slug coincide', () => pm.expect(tenant.slug).to.eql(pm.collectionVariables.get('tenant_slug')));",
+                  "pm.collectionVariables.set('logged_user_id', user.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me (Bearer)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/users/me", "host": ["{{baseUrl}}"], "path": ["api", "users", "me"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('Tenant presente', () => pm.expect(data.tenant.id).to.eql(pm.collectionVariables.get('tenant_id')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/users?limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users"],
+              "query": [{ "key": "limit", "value": "50" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"qa-{{run_stamp}}@solanium.test\",\n  \"nombre\": \"QA User {{run_stamp}}\",\n  \"password\": \"qaPassword123\",\n  \"role\": \"operador\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api", "users"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const u = pm.response.json().data;",
+                  "pm.test('id presente', () => pm.expect(u.id).to.be.a('string'));",
+                  "pm.collectionVariables.set('created_user_id', u.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get by id",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/users/{{created_user_id}}", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{created_user_id}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Sin password_hash', () => pm.expect(pm.response.json().data.password_hash).to.be.undefined);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update (rol → solo_lectura)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"solo_lectura\",\n  \"nombre\": \"QA User {{run_stamp}} (updated)\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/users/{{created_user_id}}", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{created_user_id}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const u = pm.response.json().data;",
+                  "pm.test('role actualizado', () => pm.expect(u.role).to.eql('solo_lectura'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 · Customers",
+      "item": [
+        {
+          "name": "List",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/customers?limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "customers"],
+              "query": [{ "key": "limit", "value": "50" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"QA Customer {{run_stamp}}\",\n  \"documento\": \"QA-{{run_stamp}}\",\n  \"email\": \"customer-{{run_stamp}}@solanium.test\",\n  \"telefono\": \"+58 414 0000000\",\n  \"direccion\": \"Calle Test 123\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/customers", "host": ["{{baseUrl}}"], "path": ["api", "customers"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const c = pm.response.json().data;",
+                  "pm.collectionVariables.set('customer_id', c.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get by id",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/customers/{{customer_id}}", "host": ["{{baseUrl}}"], "path": ["api", "customers", "{{customer_id}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telefono\": \"+58 424 9999999\",\n  \"direccion\": \"Av. Actualizada 456\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/customers/{{customer_id}}", "host": ["{{baseUrl}}"], "path": ["api", "customers", "{{customer_id}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('telefono actualizado', () => pm.expect(pm.response.json().data.telefono).to.eql('+58 424 9999999'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5 · Products",
+      "item": [
+        {
+          "name": "List",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/products?limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "products"],
+              "query": [{ "key": "limit", "value": "50" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('tenant.tipo_negocio presente', () => pm.expect(body.tenant.tipo_negocio).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create (papelería metadata)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"QA-{{run_stamp}}\",\n  \"nombre\": \"QA Producto {{run_stamp}}\",\n  \"descripcion\": \"Generado por la colección de Postman\",\n  \"precio\": 9.99,\n  \"stock\": 25,\n  \"unidad\": \"unidad\",\n  \"metadata\": {\n    \"presentacion\": \"individual\",\n    \"unidades_por_paquete\": 1\n  }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/products", "host": ["{{baseUrl}}"], "path": ["api", "products"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const p = pm.response.json().data;",
+                  "pm.collectionVariables.set('product_id', p.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get by id",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/products/{{product_id}}", "host": ["{{baseUrl}}"], "path": ["api", "products", "{{product_id}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update (precio + descripción)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"precio\": 11.50,\n  \"descripcion\": \"Actualizado por Postman\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/products/{{product_id}}", "host": ["{{baseUrl}}"], "path": ["api", "products", "{{product_id}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('precio actualizado', () => pm.expect(Number(pm.response.json().data.precio)).to.eql(11.5));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Adjust stock (+10)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"delta\": 10,\n  \"reason\": \"Postman QA — entrada de inventario\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/products/{{product_id}}/adjust-stock", "host": ["{{baseUrl}}"], "path": ["api", "products", "{{product_id}}", "adjust-stock"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('stock = 35', () => pm.expect(Number(pm.response.json().data.stock)).to.eql(35));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6 · Templates",
+      "item": [
+        {
+          "name": "List presets (público)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/api/templates/presets", "host": ["{{baseUrl}}"], "path": ["api", "templates", "presets"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const arr = pm.response.json().data;",
+                  "pm.test('>= 14 presets', () => pm.expect(arr.length).to.be.at.least(14));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List (tenant)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/templates", "host": ["{{baseUrl}}"], "path": ["api", "templates"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Apply preset (sunset-classic)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slug\": \"sunset-classic\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/templates/apply-preset", "host": ["{{baseUrl}}"], "path": ["api", "templates", "apply-preset"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 o 200', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const t = pm.response.json().data;",
+                  "pm.test('slug = sunset-classic', () => pm.expect(t.slug).to.eql('sunset-classic'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create (slug único)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slug\": \"qa-{{run_stamp}}\",\n  \"nombre\": \"QA Template {{run_stamp}}\",\n  \"descripcion\": \"Plantilla creada por Postman\",\n  \"is_default\": false,\n  \"theme\": {\n    \"accent\": \"#10b981\",\n    \"gradient_from\": \"#10b981\",\n    \"gradient_to\": \"#0ea5e9\",\n    \"font\": \"inter\",\n    \"layout\": \"modern\",\n    \"logo_position\": \"left\",\n    \"card_style\": \"bezel\",\n    \"button_style\": \"rounded\",\n    \"sidebar_style\": \"glass\",\n    \"typography_scale\": \"default\",\n    \"color_primary\": \"#10b981\",\n    \"color_secondary\": \"#0ea5e9\",\n    \"particle_variant\": \"particles\"\n  },\n  \"defaults\": {\n    \"impuesto_pct\": 0,\n    \"metodo_pago\": \"efectivo\",\n    \"moneda\": \"USD\",\n    \"notas\": \"\"\n  }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/templates", "host": ["{{baseUrl}}"], "path": ["api", "templates"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const t = pm.response.json().data;",
+                  "pm.collectionVariables.set('template_id', t.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get by id",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/templates/{{template_id}}", "host": ["{{baseUrl}}"], "path": ["api", "templates", "{{template_id}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update (descripción)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"descripcion\": \"Actualizada por Postman\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/templates/{{template_id}}", "host": ["{{baseUrl}}"], "path": ["api", "templates", "{{template_id}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('descripción actualizada', () => pm.expect(pm.response.json().data.descripcion).to.eql('Actualizada por Postman'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7 · Invoices",
+      "item": [
+        {
+          "name": "Summary",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/invoices/summary", "host": ["{{baseUrl}}"], "path": ["api", "invoices", "summary"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/invoices?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "invoices"],
+              "query": [{ "key": "limit", "value": "20" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create (con customer + 2 items)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"estado\": \"emitida\",\n  \"metodo_pago\": \"tarjeta\",\n  \"moneda\": \"USD\",\n  \"impuesto_pct\": 16,\n  \"descuento\": 0,\n  \"notas\": \"Factura de prueba creada por Postman\",\n  \"items\": [\n    {\n      \"product_id\": \"{{product_id}}\",\n      \"sku\": \"QA-{{run_stamp}}\",\n      \"nombre\": \"QA Producto {{run_stamp}}\",\n      \"unidad\": \"unidad\",\n      \"cantidad\": 2,\n      \"precio_unitario\": 11.5,\n      \"descuento_unit\": 0\n    },\n    {\n      \"sku\": \"SVC-{{run_stamp}}\",\n      \"nombre\": \"Servicio adicional\",\n      \"unidad\": \"hora\",\n      \"cantidad\": 1,\n      \"precio_unitario\": 50\n    }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/invoices", "host": ["{{baseUrl}}"], "path": ["api", "invoices"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const inv = pm.response.json().data;",
+                  "pm.collectionVariables.set('invoice_id', inv.id);",
+                  "pm.test('subtotal calculado por backend', () => pm.expect(Number(inv.subtotal)).to.eql(73));",
+                  "pm.test('total con IVA 16%', () => pm.expect(Number(inv.total)).to.eql(84.68));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get by id",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/invoices/{{invoice_id}}", "host": ["{{baseUrl}}"], "path": ["api", "invoices", "{{invoice_id}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const inv = pm.response.json().data;",
+                  "pm.test('items length = 2', () => pm.expect(inv.items.length).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark as paid",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/api/invoices/{{invoice_id}}/mark-paid", "host": ["{{baseUrl}}"], "path": ["api", "invoices", "{{invoice_id}}", "mark-paid"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('estado = pagada', () => pm.expect(pm.response.json().data.estado).to.eql('pagada'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send email (placeholder)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"to\": \"qa-recipient-{{run_stamp}}@solanium.test\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/invoices/{{invoice_id}}/send-email", "host": ["{{baseUrl}}"], "path": ["api", "invoices", "{{invoice_id}}", "send-email"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('sent=true', () => pm.expect(pm.response.json().data.sent).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update (notas)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notas\": \"Notas actualizadas vía Postman\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/invoices/{{invoice_id}}", "host": ["{{baseUrl}}"], "path": ["api", "invoices", "{{invoice_id}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8 · Super-admin (gestión SaaS)",
+      "item": [
+        {
+          "name": "List super-admins",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "x-super-admin-key", "value": "{{super_admin_key}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/users/super-admins", "host": ["{{baseUrl}}"], "path": ["api", "users", "super-admins"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List all activations (active only)",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "x-super-admin-key", "value": "{{super_admin_key}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/activation?active=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "activation"],
+              "query": [{ "key": "active", "value": "true" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Array', () => pm.expect(pm.response.json().data).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Onboard NEW tenant (genera tenant + activación + code)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-super-admin-key", "value": "{{super_admin_key}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"new_tenant\": {\n    \"slug\": \"qa-tenant-{{run_stamp}}\",\n    \"nombre\": \"QA Tenant {{run_stamp}}\",\n    \"tipo_negocio\": \"generico\"\n  },\n  \"template_slug\": \"generico-vibrant\",\n  \"branding\": {\n    \"empresa\": \"QA Tenant {{run_stamp}}\",\n    \"eslogan\": \"Tenant temporal de pruebas\",\n    \"color_primario\": \"#a855f7\",\n    \"color_secundario\": \"#22d3ee\"\n  },\n  \"plan\": \"trial\",\n  \"duracion_dias\": 7,\n  \"subscription_type\": \"monthly\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/activation/onboard", "host": ["{{baseUrl}}"], "path": ["api", "activation", "onboard"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const data = pm.response.json().data;",
+                  "pm.collectionVariables.set('new_tenant_id', data.tenant.id);",
+                  "pm.collectionVariables.set('new_tenant_slug', data.tenant.slug);",
+                  "pm.collectionVariables.set('new_activation_id', data.activation.id);",
+                  "pm.collectionVariables.set('new_session_token', data.token);",
+                  "pm.collectionVariables.set('new_code', data.code);",
+                  "pm.test('Bearer 64 hex', () => pm.expect(data.token).to.match(/^[0-9a-f]{64}$/));",
+                  "pm.test('Code 6 dígitos', () => pm.expect(data.code).to.match(/^\\d{6}$/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify NEW code (valida nuevo tenant)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{new_code}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/activation/verify", "host": ["{{baseUrl}}"], "path": ["api", "activation", "verify"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('tenant slug coincide', () => pm.expect(pm.response.json().data.tenant.slug).to.eql(pm.collectionVariables.get('new_tenant_slug')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh code (NEW tenant)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-super-admin-key", "value": "{{super_admin_key}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/api/activation/{{new_activation_id}}/refresh-code", "host": ["{{baseUrl}}"], "path": ["api", "activation", "{{new_activation_id}}", "refresh-code"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('Code 6 dígitos', () => pm.expect(data.code).to.match(/^\\d{6}$/));",
+                  "pm.collectionVariables.set('new_code', data.code);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Renew (NEW tenant +30 días)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-super-admin-key", "value": "{{super_admin_key}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"duracion_dias\": 30\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/activation/{{new_activation_id}}/renew", "host": ["{{baseUrl}}"], "path": ["api", "activation", "{{new_activation_id}}", "renew"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revoke (NEW tenant — limpieza)",
+          "request": {
+            "method": "POST",
+            "auth": { "type": "noauth" },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-super-admin-key", "value": "{{super_admin_key}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/api/activation/{{new_activation_id}}/revoke", "host": ["{{baseUrl}}"], "path": ["api", "activation", "{{new_activation_id}}", "revoke"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('revoked_at presente', () => pm.expect(pm.response.json().data.revoked_at).to.not.be.null);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "9 · Cleanup (orden inverso)",
+      "item": [
+        {
+          "name": "Delete invoice",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/api/invoices/{{invoice_id}}", "host": ["{{baseUrl}}"], "path": ["api", "invoices", "{{invoice_id}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('deleted=true', () => pm.expect(pm.response.json().deleted).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete template",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/api/templates/{{template_id}}", "host": ["{{baseUrl}}"], "path": ["api", "templates", "{{template_id}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('deleted=true', () => pm.expect(pm.response.json().deleted).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete product",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/api/products/{{product_id}}", "host": ["{{baseUrl}}"], "path": ["api", "products", "{{product_id}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('deleted=true', () => pm.expect(pm.response.json().deleted).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete customer",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/api/customers/{{customer_id}}", "host": ["{{baseUrl}}"], "path": ["api", "customers", "{{customer_id}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('deleted=true', () => pm.expect(pm.response.json().deleted).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete user",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/api/users/{{created_user_id}}", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{created_user_id}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('deleted=true', () => pm.expect(pm.response.json().deleted).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sanity · 401 sin Bearer",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "url": { "raw": "{{baseUrl}}/api/products", "host": ["{{baseUrl}}"], "path": ["api", "products"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('error=unauthorized', () => pm.expect(pm.response.json().error).to.eql('unauthorized'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sanity · 403 super-admin sin key",
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "url": {
+              "raw": "{{baseUrl}}/api/activation/current-code?tenant_slug={{tenant_slug}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "activation", "current-code"],
+              "query": [{ "key": "tenant_slug", "value": "{{tenant_slug}}" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', () => pm.response.to.have.status(403));",
+                  "pm.test('error=forbidden', () => pm.expect(pm.response.json().error).to.eql('forbidden'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

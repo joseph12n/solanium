@@ -5,7 +5,7 @@ const {
   tokenRenew,
   PRESET_TEMPLATES,
 } = require('../../../shared/schemas');
-const { generateToken } = require('../config/crypto');
+const { generateToken, generateCode, isCodeFresh, getCodeTtlMs } = require('../config/crypto');
 
 class ActivationServiceError extends Error {
   constructor(message, { status = 400, code = 'activation_error', details } = {}) {
@@ -29,7 +29,6 @@ async function presetApplier(client, tenantId, slug) {
     throw err;
   }
 
-  // Limpiamos cualquier default previa del tenant para no violar el índice único parcial
   await client.query(
     `UPDATE invoice_templates SET is_default = FALSE
        WHERE tenant_id = $1 AND is_default = TRUE`,
@@ -57,7 +56,8 @@ async function presetApplier(client, tenantId, slug) {
 
 /**
  * Onboarding: el super-admin entrega plantilla + branding + plan y obtiene
- * a cambio un token Bearer con vigencia configurable (default 30 días).
+ * a cambio un token Bearer + code de 6 dígitos con vigencia configurable
+ * (default 30 días, rotación del code cada 15 min).
  */
 async function onboard(payload, { emittedBy } = {}) {
   let parsed;
@@ -71,7 +71,6 @@ async function onboard(payload, { emittedBy } = {}) {
 
   const { kind, data } = parsed;
 
-  // Resolver tenant
   let tenantRef;
   if (kind === 'new') {
     tenantRef = { new: data.new_tenant };
@@ -86,29 +85,96 @@ async function onboard(payload, { emittedBy } = {}) {
   }
 
   const token = generateToken();
+  const code = generateCode();
   const result = await activationRepo.onboard({
     tenant: tenantRef,
     templateSlug: data.template_slug,
     branding: JSON.stringify(data.branding),
     plan: data.plan,
     duracionDias: data.duracion_dias,
+    subscriptionType: data.subscription_type,
     emittedBy: emittedBy?.id ?? null,
     token,
+    code,
     presetApplier,
   });
 
+  return { ...result, token, code };
+}
+
+/**
+ * Rota el código si la ventana de 15 min ya venció. Devuelve la fila ya con
+ * datos del tenant listos para el controller.
+ */
+async function rotateIfStale(row) {
+  if (isCodeFresh(row.code_refreshed_at)) return row;
+  const fresh = await activationRepo.rotateCode(row.id, generateCode());
+  return fresh || row;
+}
+
+/**
+ * Verificación por code (flujo nuevo, 6 dígitos) o por Bearer token (compat).
+ * Acepta cualquiera de los dos y retorna la fila enriquecida con el tenant.
+ *
+ * Flujo para code:
+ *   • Si se encuentra y está fresco → lo retorna tal cual.
+ *   • Si se encuentra pero venció la ventana de 15 min → se considera un
+ *     intento válido de entrada (el code es no-predecible y está vinculado
+ *     al tenant vía UNIQUE), se rota lazy y se retorna la fila con el nuevo
+ *     code. Así seguimos la especificación: rotación perezosa "al siguiente
+ *     verify", no error duro.
+ *   • Si no se encuentra → 401 invalid_code (code jamás emitido o revocado).
+ */
+async function verify(input) {
+  if (!input) throw new ActivationServiceError('Falta el código o token', { status: 400, code: 'missing_credential' });
+  const clean = String(input).trim();
+
+  // 6 dígitos numéricos → code
+  if (/^\d{6}$/.test(clean)) {
+    const row = await activationRepo.findActiveByCode(clean);
+    if (!row) throw new ActivationServiceError('Código inválido o expirado', { status: 401, code: 'invalid_code' });
+    const fresh = await rotateIfStale(row);
+    activationRepo.touchLastUsed(fresh.id).catch(() => {});
+    return fresh;
+  }
+
+  // Cualquier otra cosa → Bearer token largo (sesión de 30 días).
+  const row = await activationRepo.findActiveByToken(clean);
+  if (!row) throw new ActivationServiceError('Token inválido o expirado', { status: 401, code: 'invalid_token' });
+  activationRepo.touchLastUsed(row.id).catch(() => {});
+  return row;
+}
+
+/**
+ * Devuelve el code vigente de un tenant, rotándolo si venció. Pensado para
+ * super-admin: ver el código que debe entregar al cliente en este momento.
+ */
+async function getCurrentCode({ tenantId, tenantSlug }) {
+  let row;
+  if (tenantId) row = await activationRepo.findByTenantId(tenantId);
+  else if (tenantSlug) row = await activationRepo.findByTenantSlug(tenantSlug);
+  if (!row) throw new ActivationServiceError('No hay token activo para el tenant', { status: 404, code: 'no_active_token' });
+  const fresh = await rotateIfStale(row);
   return {
-    ...result,
-    token, // devolvemos el token plano UNA sola vez (super-admin debe guardarlo)
+    tenant_slug: fresh.tenant_slug,
+    tenant_nombre: fresh.tenant_nombre,
+    code: fresh.code,
+    code_refreshed_at: fresh.code_refreshed_at,
+    code_ttl_ms: getCodeTtlMs(),
+    expires_at: fresh.expires_at,
+    subscription_type: fresh.subscription_type,
+    plan: fresh.plan,
   };
 }
 
-async function verify(token) {
-  const row = await activationRepo.findActiveByToken(token);
-  if (!row) throw new ActivationServiceError('Token inválido o expirado', { status: 401, code: 'invalid_token' });
-  // Actualizar last_used_at de forma async, no bloqueante
-  activationRepo.touchLastUsed(row.id).catch(() => {});
-  return row;
+/**
+ * Fuerza rotación inmediata del code (endpoint manual / cron futuro).
+ */
+async function forceRefreshCode(id) {
+  const row = await activationRepo.findById(id);
+  if (!row) throw new ActivationServiceError('Token no encontrado', { status: 404, code: 'not_found' });
+  const fresh = await activationRepo.rotateCode(id, generateCode());
+  return fresh;
 }
 
 async function listByTenant(tenant) {
@@ -142,6 +208,8 @@ async function revoke(id) {
 module.exports = {
   onboard,
   verify,
+  getCurrentCode,
+  forceRefreshCode,
   listByTenant,
   listAll,
   renew,

@@ -15,12 +15,14 @@ import {
   Cpu,
   ClipboardList,
   Sparkles,
+  UserCog,
   type LucideIcon,
 } from 'lucide-react';
 import { useState } from 'react';
 
 import GradientText from '@/components/reactbits/GradientText';
 import { useSession } from '@/lib/session-context';
+import { useLanguage } from '@/lib/language-context';
 import type { TipoNegocio } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -43,37 +45,32 @@ interface NavLink {
   icon: LucideIcon;
 }
 
-const BASE_LINKS: NavLink[] = [
-  { href: '/', label: 'Inicio', icon: LayoutDashboard },
-  { href: '/facturacion', label: 'Facturación', icon: Receipt },
-  { href: '/clientes', label: 'Clientes', icon: Users },
-  { href: '/plantillas', label: 'Plantillas', icon: Palette },
-];
-
-function inventoryLink(tipo: TipoNegocio | undefined): NavLink {
+function inventoryLink(tipo: TipoNegocio | undefined, t: (k: string) => string): NavLink {
   switch (tipo) {
     case 'carniceria':
-      return { href: '/inventario', label: 'Cortes', icon: Beef };
+      return { href: '/inventario', label: t('nav.cuts'), icon: Beef };
     case 'electronica':
-      return { href: '/inventario', label: 'Stock', icon: Cpu };
+      return { href: '/inventario', label: t('nav.stock'), icon: Cpu };
     case 'papeleria':
-      return { href: '/inventario', label: 'Inventario', icon: Package };
+      return { href: '/inventario', label: t('nav.inventory'), icon: Package };
     default:
-      return { href: '/inventario', label: 'Catálogo', icon: ClipboardList };
+      return { href: '/inventario', label: t('nav.catalog'), icon: ClipboardList };
   }
 }
 
 export function Sidebar() {
   const pathname = usePathname();
   const { tenant } = useSession();
+  const { t } = useLanguage();
   const [collapsed, setCollapsed] = useState(false);
 
   const links: NavLink[] = [
-    BASE_LINKS[0],
-    BASE_LINKS[1],
-    inventoryLink(tenant?.tipo_negocio),
-    BASE_LINKS[2],
-    BASE_LINKS[3],
+    { href: '/', label: t('nav.home'), icon: LayoutDashboard },
+    { href: '/facturacion', label: t('nav.invoicing'), icon: Receipt },
+    inventoryLink(tenant?.tipo_negocio, t),
+    { href: '/clientes', label: t('nav.customers'), icon: Users },
+    { href: '/usuarios', label: t('nav.users'), icon: UserCog },
+    { href: '/plantillas', label: t('nav.templates'), icon: Palette },
   ];
 
   const empresa = tenant?.branding?.empresa || 'Solanium';

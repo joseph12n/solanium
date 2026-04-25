@@ -7,12 +7,12 @@
  *   solanium.token    → activation_token vigente (Bearer)
  *   solanium.user     → snapshot del usuario logueado
  *   solanium.tenant   → snapshot del tenant resuelto desde /activation/verify
+ *   solanium.template → plantilla activa (skin completo del app)
  *
  * Al montar, lee el token y re-verifica contra el backend para garantizar
- * que siga vigente (no expirado / no revocado). Si falla, limpia la sesión
- * y manda a /login. Las páginas autenticadas consumen `useSession()` para
- * obtener tenant, branding y usuario; el api-client lee el token desde
- * `sessionStore` (ver lib/api.ts) sin necesidad de pasarlo manualmente.
+ * que siga vigente. Al tener tenant, busca la plantilla default del tenant
+ * y la expone como `activeTemplate` — el LayoutShell inyecta sus tokens
+ * visuales como CSS vars + data attrs para pintar toda la UI.
  */
 
 import {
@@ -24,12 +24,20 @@ import {
   useState,
 } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { api, sessionStore, type SessionUser, type Tenant, type ActivationSummary } from './api';
+import {
+  api,
+  sessionStore,
+  type SessionUser,
+  type Tenant,
+  type ActivationSummary,
+  type InvoiceTemplate,
+} from './api';
 
 const STORAGE = {
   token: 'solanium.token',
   user: 'solanium.user',
   tenant: 'solanium.tenant',
+  template: 'solanium.template',
 };
 
 export interface SessionValue {
@@ -37,14 +45,17 @@ export interface SessionValue {
   tenant: Tenant | null;
   user: SessionUser | null;
   activation: ActivationSummary | null;
+  activeTemplate: InvoiceTemplate | null;
   loading: boolean;
   login: (input: {
-    token: string;
+    code: string;
     email?: string;
     password?: string;
   }) => Promise<{ tenant: Tenant; user: SessionUser | null }>;
   logout: () => void;
   updateTenant: (patch: Partial<Tenant>) => void;
+  setActiveTemplate: (tpl: InvoiceTemplate | null) => void;
+  refreshTemplate: () => Promise<void>;
 }
 
 const SessionContext = createContext<SessionValue | undefined>(undefined);
@@ -76,13 +87,28 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [activation, setActivation] = useState<ActivationSummary | null>(null);
+  const [activeTemplate, setActiveTemplateState] = useState<InvoiceTemplate | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const fetchActiveTemplate = useCallback(async () => {
+    try {
+      const { data } = await api.listTemplates();
+      const def = data.find((t) => t.is_default) || data[0] || null;
+      setActiveTemplateState(def);
+      writeLocal(STORAGE.template, def);
+    } catch {
+      // Sin plantilla — se mantiene el skin por defecto
+    }
+  }, []);
 
   // Hidratación inicial desde localStorage + re-verificación del token
   useEffect(() => {
     const storedToken =
       typeof window === 'undefined' ? null : window.localStorage.getItem(STORAGE.token);
     const storedUser = readLocal<SessionUser>(STORAGE.user);
+    const storedTemplate = readLocal<InvoiceTemplate>(STORAGE.template);
+
+    if (storedTemplate) setActiveTemplateState(storedTemplate);
 
     if (!storedToken) {
       setLoading(false);
@@ -100,22 +126,23 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         setActivation(data.activation);
         writeLocal(STORAGE.tenant, data.tenant);
         if (storedUser) setUser(storedUser);
+        // Refrescar plantilla activa en segundo plano
+        fetchActiveTemplate();
       } catch {
-        // Token inválido o expirado — limpiar todo
         sessionStore.token = null;
         sessionStore.userId = null;
         if (typeof window !== 'undefined') {
           window.localStorage.removeItem(STORAGE.token);
           window.localStorage.removeItem(STORAGE.user);
           window.localStorage.removeItem(STORAGE.tenant);
+          window.localStorage.removeItem(STORAGE.template);
         }
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [fetchActiveTemplate]);
 
-  // Route guard: redirige a /login si no hay sesión en ruta privada
   useEffect(() => {
     if (loading) return;
     const isPublic = PUBLIC_PATHS.includes(pathname);
@@ -125,19 +152,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(
     async ({
-      token: activationToken,
+      code,
       email,
       password,
     }: {
-      token: string;
+      code: string;
       email?: string;
       password?: string;
     }) => {
-      // 1. Verificar el activation token — trae tenant + branding
-      const verifyRes = await api.verifyActivation(activationToken);
+      const verifyRes = await api.verifyActivation(code);
       const { tenant: newTenant, activation: newActivation } = verifyRes.data;
+      const sessionToken = newActivation.session_token;
+      if (!sessionToken) {
+        throw new Error('El backend no devolvió un session_token válido');
+      }
 
-      // 2. Si vienen credenciales, login del usuario dentro de ese tenant
       let newUser: SessionUser | null = null;
       if (email && password) {
         const loginRes = await api.login({
@@ -148,24 +177,24 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         newUser = loginRes.data.user;
       }
 
-      // 3. Persistir sesión
-      sessionStore.token = activationToken;
+      sessionStore.token = sessionToken;
       sessionStore.userId = newUser?.id ?? null;
-      writeLocal(STORAGE.token, null);
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem(STORAGE.token, activationToken);
+        window.localStorage.setItem(STORAGE.token, sessionToken);
       }
       writeLocal(STORAGE.user, newUser);
       writeLocal(STORAGE.tenant, newTenant);
 
-      setToken(activationToken);
+      setToken(sessionToken);
       setTenant(newTenant);
       setActivation(newActivation);
       setUser(newUser);
 
+      fetchActiveTemplate();
+
       return { tenant: newTenant, user: newUser };
     },
-    []
+    [fetchActiveTemplate]
   );
 
   const logout = useCallback(() => {
@@ -175,11 +204,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       window.localStorage.removeItem(STORAGE.token);
       window.localStorage.removeItem(STORAGE.user);
       window.localStorage.removeItem(STORAGE.tenant);
+      window.localStorage.removeItem(STORAGE.template);
     }
     setToken(null);
     setTenant(null);
     setUser(null);
     setActivation(null);
+    setActiveTemplateState(null);
     router.replace('/login');
   }, [router]);
 
@@ -192,9 +223,30 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const setActiveTemplate = useCallback((tpl: InvoiceTemplate | null) => {
+    setActiveTemplateState(tpl);
+    writeLocal(STORAGE.template, tpl);
+  }, []);
+
+  const refreshTemplate = useCallback(async () => {
+    await fetchActiveTemplate();
+  }, [fetchActiveTemplate]);
+
   const value = useMemo<SessionValue>(
-    () => ({ token, tenant, user, activation, loading, login, logout, updateTenant }),
-    [token, tenant, user, activation, loading, login, logout, updateTenant]
+    () => ({
+      token,
+      tenant,
+      user,
+      activation,
+      activeTemplate,
+      loading,
+      login,
+      logout,
+      updateTenant,
+      setActiveTemplate,
+      refreshTemplate,
+    }),
+    [token, tenant, user, activation, activeTemplate, loading, login, logout, updateTenant, setActiveTemplate, refreshTemplate]
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
